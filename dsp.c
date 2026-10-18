@@ -1,26 +1,26 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* DigiSky's render: a BigSky-style reverb pedal, twelve machines. core-dn1 calls it at interrupt level for every
+/* DigiHalo's render: a reverb pedal, twelve machines. core-dn1 calls it at interrupt level for every
  * block while the page is open (the pedal shell, pedal_dsp.inc, around fx_block). The machines share the parts:
  *   the pre-delay line   2.7 s stereo; PRE-DELAY 0-1.5 s (or the tempo's divisions), read between frames so a
- *                        turn glides; MAGNETO's tape and NONLINEAR's taps are this line too
+ *                        turn glides; TAPE's tape and NONLINEAR's taps are this line too
  *   the diffusers        up to six allpasses a side, their sizes and strength the machine's (and DIFFUSION's)
- *   the bloom stages     three long allpasses a side with feedback around them (BLOOM)
+ *   SWIRL's stages       three long allpasses a side with feedback around them (SWIRL)
  *   the tank             a feedback delay network: eight lines, a Householder matrix, each line's gain set from
  *                        DECAY's RT60 and its length, a one-pole damping from TONE in each, MOD moving four of
  *                        the lines a quarter cycle apart; L into the even lines, R into the odd
  *   the shimmer          two pitch voices on the tank's input, its output or both (SHIMMER)
  *   the springs          one to three lines, each through 14 stretched allpasses (the chirp), DWELL before them
- *   the after-stage      TONE's low-pass (or BLOOM's resonant one, or CHORALE's vowel formants), HALL's MID,
- *                        LOW END's shelf, WIDTH, MIX against the dry (the BigSky's law: 50/50 at 3:00), DRY, CAB
+ *   the after-stage      TONE's low-pass (or SWIRL's resonant one, or VOWEL's formants), HALL's MID,
+ *                        LOW END's shelf, WIDTH, MIX against the dry (50/50 at three quarters), DRY, CAB
  * HOLD (T1, CC 97) sets every feedback to one and the damping off: FREEZE also stops the input reaching it,
  * INFINITE lets it add; a guard on the tank's peak keeps INFINITE from running away. A machine change mutes the
  * wet for a moment; without SPILLOVER the buffers are cleared meanwhile, 16 KB a block.
  * Fixed point as the shell's; the lines hold their samples at half scale. */
 #pragma GCC optimize ("Os", "no-tree-loop-distribute-patterns")   /* RAM is short: small code, but the tank */
-#include "dsky.h"
+#include "dhalo.h"
 #include "tables.h"
 
-#define PD_MIX  (-1)                            /* DigiSky mixes the dry itself (MIX's law, DRY, SWELL, panning) */
+#define PD_MIX  (-1)                            /* DigiHalo mixes the dry itself (MIX's law, DRY, SWELL, panning) */
 #define PD_OUT  S_BOOST
 #include "pedal_dsp.inc"
 
@@ -48,7 +48,7 @@ static const u16 out_g[MC_N] = { 1300, 1840, 1380, 1300, 2300, 1400, 1800, 700, 
                                                 /* the wet's gain, Q12 */
 static const u16 tk_base[8] = { 1571, 1861, 2039, 2237, 2473, 2671, 2927, 3163 };   /* the tank's lines, frames */
 static const u16 ap_base[12] = { 142, 107, 379, 277, 613, 887, 149, 101, 367, 283, 647, 911 };  /* L's six, R's */
-static const u16 bl_base[6] = { 1201, 1559, 1907, 1283, 1601, 1979 };                          /* BLOOM's */
+static const u16 bl_base[6] = { 1201, 1559, 1907, 1283, 1601, 1979 };                          /* SWIRL's */
 static const u16 er_t[2][4] = { { 149, 307, 487, 691 }, { 173, 353, 521, 739 } };
 static const s16 er_g[4] = { 29491, 24576, 20972, 17039 };
 static const u16 er_mul[MC_N][2] = { { 256, 435 }, { 614, 922 } };   /* ROOM's and HALL's reflections: Q8 */
@@ -104,7 +104,7 @@ static s32 hb[2 * HN], hw[2 * HN], hprev[2];    /* a block at 24 kHz; a copy; th
 static u32 dw;                                  /* the pre-delay line: the next frame written */
 static s32 pre12;                               /* the pre-delay now, Q12 frames */
 static u32 apw[SK_NAP];                         /* the allpasses' positions */
-static s32 bl_fb[2];                            /* BLOOM: its stages' last output, a side */
+static s32 bl_fb[2];                            /* SWIRL: its stages' last output, a side */
 static u32 tw;                                  /* the tank: the next frame written */
 static u32 tk_len[8];
 static s32 tk_g[8], tk_lpc, tk_lp[8], tk_m[4], tk_ms[4], tk_peak, tk_guard = 16384;
@@ -115,14 +115,14 @@ static s16 spr_cb[3][14][4];                    /* SPRING: the chirps' stages */
 static u32 spr_w, spr_j;
 static s32 spr_lp[3], spr_hp[3];
 static s32 fx_peak, fx_guard = 16384;           /* the springs', the tape's and the taps' feedback guard */
-static s32 mg_fb, mg_lp, mg_hp, mg_w[2];      /* MAGNETO */
+static s32 mg_fb, mg_lp, mg_hp, mg_w[2];      /* TAPE */
 static u32 mg_ph, mg_ph2;
 static s32 nl_fb;                               /* NONLINEAR: its feedback */
 static u32 rf_d[20];                            /* REFLECTIONS: the taps */
 static s32 rf_gl[20], rf_gr[20];
 static u32 rf_key = 0xffffffffu;
 static s32 po_lp[2], po_lo[2], po_ma[2], po_mb[2], po_cab[4], po_dc[2];  /* the after-stage's filters */
-static s32 sv_lo[6], sv_bd[6];                  /* CHORALE's formants (four), BLOOM's tone (two) */
+static s32 sv_lo[6], sv_bd[6];                  /* VOWEL's formants (four), SWIRL's tone (two) */
 static u32 ch_ph, ch_rw;
 static s32 ch_m, ch_tgt;
 static s32 sw_env, sw_fast, sw_slow, sw_inc;   /* SWELL's envelope (Q15), its follower */
@@ -177,12 +177,12 @@ static int pstep(int slot)                      /* the running machine's paramet
     return sky_step(k, sky_pn[mc_run][slot]);
 }
 
-/* DECAY: the machine's RT60 in ms (MAGNETO's last head, NONLINEAR's time; with SYNC and a tempo, a division) */
+/* DECAY: the machine's RT60 in ms (TAPE's last head, NONLINEAR's time; with SYNC and a tempo, a division) */
 static u32 rt_ms(int mc)
 {
-    if ((mc == MC_MAGNETO || mc == MC_NONLIN) && ST.opt[O_SYNC] && qfr) {
+    if ((mc == MC_TAPE || mc == MC_NONLIN) && ST.opt[O_SYNC] && qfr) {
         u32 f = sync_frames(sk[K_DECAY], pre_div, 9) / 48;
-        u32 hi = mc == MC_MAGNETO ? 1500 : 2000;
+        u32 hi = mc == MC_TAPE ? 1500 : 2000;
         return f < 50 ? 50 : f > hi ? hi : f;
     }
     return ((u32)rt_min[mc] * (u32)exp2_q12((sk[K_DECAY] * rt_lr[mc]) >> 15)) >> 12;
@@ -310,8 +310,8 @@ static void diffuse(s32 *b, int n, u32 size, s32 c)
     }
 }
 
-/* BLOOM: three long allpasses a side, LENGTH their sizes, FEEDBACK around them */
-HOT static void bloom(s32 *b, int len, int fb)
+/* SWIRL: three long allpasses a side, LENGTH their sizes, FEEDBACK around them */
+HOT static void swirl(s32 *b, int len, int fb)
 {
     s32 c = 22938, fg = fb * 1700;              /* FEEDBACK 0-17: 0 .. 0.88 */
     u32 sz = 64 + len * 34, L[6];              /* LENGTH 0-17: 0.25x .. 2.5x */
@@ -459,11 +459,11 @@ HOT static void shimmer(s32 *b, s32 amt, int mode, int i1, int i2)
     pw = p, sh_ph[0] = ph0, sh_ph[1] = ph1;
 }
 
-/* ---- the after-stage: TONE, CHORALE's vowels, BLOOM's resonant tone, HALL's MID, LOW END, WIDTH -------- */
+/* ---- the after-stage: TONE, VOWEL's vowels, SWIRL's resonant tone, HALL's MID, LOW END, WIDTH -------- */
 static const u8 vw_f[3][2] = { { 134, 150 }, { 108, 134 }, { 94, 128 } };   /* AH, OH, OO: pd_svf's steps */
 static const u8 vw_ab[7][2] = { { 0, 2 }, { 0, 0 }, { 0, 1 }, { 1, 1 }, { 2, 1 }, { 2, 2 }, { 0, 0 } };
 
-HOT static void chorale(s32 *b, int vowel, int reso)
+HOT static void vowel(s32 *b, int vowel, int reso)
 {
     static const s16 qv[3] = { 11469, 5734, 2458 };     /* MILD, MEDIUM, HIGH: the formants' damping, Q14 */
     s32 q = qv[reso], f[4], m, breath = 300 + (sk[K_TONE] >> 4);       /* TONE: the breath, 0.07 .. 0.57 */
@@ -504,7 +504,7 @@ HOT static void chorale(s32 *b, int vowel, int reso)
     }
 }
 
-HOT static void bloom_tone(s32 *b)                  /* BLOOM's TONE: a resonant low-pass, 470 Hz .. 6 kHz */
+HOT static void swirl_tone(s32 *b)                  /* SWIRL's TONE: a resonant low-pass, 470 Hz .. 6 kHz */
 {
     s32 f = pd_svf[110 + ((sk[K_TONE] * 115) >> 15)], q = 7373;
     int i, k;
@@ -529,10 +529,10 @@ HOT static void post(s32 *b, int mc)
         b[i] -= LP(po_dc[0], b[i], pd_op[0]);
         b[i + 1] -= LP(po_dc[1], b[i + 1], pd_op[0]);
     }
-    if (mc == MC_CHORALE)
-        chorale(b, pstep(P_P1), pstep(P_P2));
-    else if (mc == MC_BLOOM)
-        bloom_tone(b);
+    if (mc == MC_VOWEL)
+        vowel(b, pstep(P_P1), pstep(P_P2));
+    else if (mc == MC_SWIRL)
+        swirl_tone(b);
     else if (ti < 252) {                        /* TONE: 900 Hz .. open */
         s32 ac = pd_op[ti];
         for (i = 0; i < 2 * N; i += 2) {
@@ -571,13 +571,13 @@ HOT static void post(s32 *b, int mc)
     po_lp[0] = t0, po_lp[1] = t1, po_lo[0] = l0, po_lo[1] = l1;
 }
 
-/* ---- the tank machines: ROOM HALL PLATE SWELL BLOOM CLOUD CHORALE SHIMMER ------------------------------ */
+/* ---- the tank machines: ROOM HALL PLATE SWELL SWIRL NEBULA VOWEL SHIMMER ------------------------------ */
 static void m_tank(int mc, u32 pre, int hold, int freeze)
 {
     s32 depth = (sk[K_MOD] * mod_max[mc]) >> 3, c = ap_coef[mc], inmod = 0, sz;
     u32 mhz = lfo_mhz(mod_mhz[mc]);
     int i, size = run_size;
-    if (mc == MC_CLOUD && sk[K_MOD] > 21500)    /* CLOUD past 2:00: the oscillators speed up */
+    if (mc == MC_NEBULA && sk[K_MOD] > 21500)    /* NEBULA past 2:00: the oscillators speed up */
         mhz += (mhz * (u32)(sk[K_MOD] - 21500)) >> 11;
     if ((mc == MC_ROOM || mc == MC_HALL) && sk[K_MOD] > 16384)    /* the knob's second half: the input moves */
         inmod = ((sinq(tk_ph + 0x20000000u) + 32768) * ((sk[K_MOD] - 16384) >> 6)) >> 9;
@@ -586,13 +586,13 @@ static void m_tank(int mc, u32 pre, int hold, int freeze)
         early(bf, mc, size);
     if (mc == MC_ROOM)
         c = 6554 + pstep(P_P2) * 1000;          /* DIFFUSION: 0.2 .. 0.81 */
-    else if (mc == MC_CLOUD)
+    else if (mc == MC_NEBULA)
         c = pstep(P_P1) * 1250;                 /* 0 (grainy) .. 0.76 */
     c = (c * (ss[S_DIFF] >> 6)) >> 8;           /* page 2's DIFFUSION: 0 .. 2x the machine's */
     half_in(bf, hb);                            /* on at 24 kHz */
     diffuse(hb, n_ap[mc], ap_size[mc], c);
-    if (mc == MC_BLOOM)
-        bloom(hb, pstep(P_P1), pstep(P_P2));
+    if (mc == MC_SWIRL)
+        swirl(hb, pstep(P_P1), pstep(P_P2));
     if (mc == MC_SHIMMER) {
         int amt = pstep(P_X1), mode = pstep(P_X2);
         if (amt)
@@ -671,25 +671,25 @@ HOT static void m_spring(u32 pre, int hold, int freeze)
     fx_peak = pk;
 }
 
-/* ---- MAGNETO: a multi-head tape echo (PRE-DELAY is the feedback), its heads smeared and into a reverb ---- */
+/* ---- TAPE: a multi-head tape echo (PRE-DELAY is the feedback), its heads smeared and into a reverb ---- */
 static const u16 hd_pos[2][3][6] = {           /* the heads, Q12 of the last one's time: EVEN, UNEVEN */
     { { 1365, 2731, 4096 }, { 1024, 2048, 3072, 4096 }, { 683, 1365, 2048, 2731, 3413, 4096 } },
     { { 860, 2130, 4096 }, { 1188, 1925, 2908, 4096 }, { 532, 1270, 1802, 2539, 3399, 4096 } } };
 
-HOT static void m_magneto(int hold, int freeze)
+HOT static void m_tape(int hold, int freeze)
 {
     static const u8 nh[3] = { 3, 4, 6 };
     s16 *D = SK_PDL;
     int hi = pstep(P_P1), sp = pstep(P_P2), dif = pstep(P_X1), H = nh[hi], i, h;
-    u32 T = rt_ms(MC_MAGNETO) * 48, p = dw, d[6];
+    u32 T = rt_ms(MC_TAPE) * 48, p = dw, d[6];
     s32 fb = hold ? 4096 : (kt(pd_fb, sk[K_PRE]) * 3973) >> 12, pk = fx_peak;
     s32 alp = pd_op[170 + ((sk[K_TONE] * 80) >> 15)], ahp = pd_op[120 - 5 * sky_step(ST.knob[K_LOW], 21)];
     s32 depth = sk[K_MOD] >> 2, ws[2], wv[2], fl = mg_fb, z = mg_lp, y = mg_hp, inj = freeze ? 0 : 1;
     fb = (fb * fx_guard) >> 14;
     for (h = 0; h < H; h++)
         d[h] = T * hd_pos[sp][hi][h];           /* Q12 frames */
-    mg_ph += lfo_inc((s32)lfo_mhz(mod_mhz[MC_MAGNETO])) * N;      /* wow, and flutter ten times faster */
-    mg_ph2 += lfo_inc((s32)lfo_mhz(mod_mhz[MC_MAGNETO]) * 11) * N;
+    mg_ph += lfo_inc((s32)lfo_mhz(mod_mhz[MC_TAPE])) * N;      /* wow, and flutter ten times faster */
+    mg_ph2 += lfo_inc((s32)lfo_mhz(mod_mhz[MC_TAPE]) * 11) * N;
     {
         s32 t = ((sinq(mg_ph) * depth) >> 10) + ((sinq(mg_ph2) * depth) >> 14) + (depth << 5);
         ws[0] = (t - mg_w[0]) / N;
@@ -722,13 +722,13 @@ HOT static void m_magneto(int hold, int freeze)
     mg_fb = fl, mg_lp = z, mg_hp = y, mg_w[0] = wv[0], mg_w[1] = wv[1];
     fx_peak = pk;
     half_in(bf, hb);                            /* the heads smeared, and into a reverb, at 24 kHz */
-    diffuse(hb, 2, ap_size[MC_MAGNETO], (dif * 1100 * (ss[S_DIFF] >> 6)) >> 8);
+    diffuse(hb, 2, ap_size[MC_TAPE], (dif * 1100 * (ss[S_DIFF] >> 6)) >> 8);
     {                                           /* more of the reverb with DIFFUSION */
         s32 lvl = 1200 + dif * 120;
         int k;
         for (k = 0; k < 2 * HN; k++)
             hw[k] = hb[k];
-        tank_set(tk_size[MC_MAGNETO][0], 700 + (u32)dif * 120, 0, 300, 0);
+        tank_set(tk_size[MC_TAPE][0], 700 + (u32)dif * 120, 0, 300, 0);
         tank(hb);
         for (k = 0; k < 2 * HN; k++)
             hb[k] = hw[k] + ((hb[k] * lvl) >> 13);
@@ -898,8 +898,8 @@ static void change_block(void)
             mc_run = mc;
             run_size = key & 1;
             if (!ST.opt[O_SPILL] && was != mc) {    /* SPILLOVER off: the buffers cleared (and the line, for
-                                                       MAGNETO's tape and NONLINEAR's taps) */
-                int tape = was == MC_MAGNETO || was == MC_NONLIN || mc == MC_MAGNETO || mc == MC_NONLIN;
+                                                       TAPE's tape and NONLINEAR's taps) */
+                int tape = was == MC_TAPE || was == MC_NONLIN || mc == MC_TAPE || mc == MC_NONLIN;
                 clr_at = tape ? 0 : 0x00080000u;
                 clr_end = (u32)(PD_CLEAR_HI - PD_BULK);
                 state_clear();
@@ -993,8 +993,8 @@ HOT static void fx_block(s32 *w, const s32 *x, int mode)
             bf[i] = 0;
     } else if (mc == MC_SPRING) {
         m_spring(pre, hold, freeze);
-    } else if (mc == MC_MAGNETO) {
-        m_magneto(hold, freeze);
+    } else if (mc == MC_TAPE) {
+        m_tape(hold, freeze);
     } else if (mc == MC_NONLIN) {
         m_nonlin(hold, freeze);
     } else if (mc == MC_REFL) {
@@ -1002,7 +1002,7 @@ HOT static void fx_block(s32 *w, const s32 *x, int mode)
     } else {
         m_tank(mc, pre, hold, freeze);
     }
-    if (mc == MC_SPRING || mc == MC_MAGNETO || mc == MC_NONLIN) {     /* their feedback's guard */
+    if (mc == MC_SPRING || mc == MC_TAPE || mc == MC_NONLIN) {     /* their feedback's guard */
         if (fx_peak > 30000)
             fx_guard -= fx_guard >> 6;
         else if (fx_guard < 16384)
@@ -1030,7 +1030,7 @@ HOT static void fx_block(s32 *w, const s32 *x, int mode)
     ts = (t1 - t0) / N;
     ST.flag[F_SWELL] = (u8)(sw_on || ST.sw[SW_SWELL]);
 
-    /* MIX as the BigSky's: all dry at the minimum, 50/50 at 3:00 (three quarters), all wet at the maximum */
+    /* MIX: all dry at the minimum, 50/50 at three quarters, all wet at the maximum */
     md = sk[K_MIX] <= 24384 ? 4096 : ((32512 - sk[K_MIX]) << 12) / 8128;
     mw = sk[K_MIX] >= 24384 ? 4096 : (sk[K_MIX] << 12) / 24384;
     mw = (mw * (chg_g >> 3)) >> 12;

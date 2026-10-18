@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* DigiSky's constant tables, from gentables.py and pedal_tables.py: do not edit. */
+/* DigiHalo's constant tables, from gentables.py and pedal_tables.py: do not edit. */
 #include <stdint.h>
 static const int16_t sh_out[1025] = {
     -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767,

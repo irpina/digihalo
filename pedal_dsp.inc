@@ -10,7 +10,7 @@
  *   -> MIX (equal power) -> OUTPUT LEVEL -> a soft clip over 0.8 of full scale -> out
  * fx_block's mode: PD_RUN (the pedal is on), PD_TAILS (bypassed with TRAILS: x silent for the effect, its tail
  * is added to the dry at unity) or PD_IDLE (bypassed, no trails: the effect may keep listening, its w is not
- * heard). Fixed point as DigiChroma's: samples Q15 in an int32 (32768 full scale), +-65535 between stages; knobs
+ * heard). Fixed point as DigiPrism's: samples Q15 in an int32 (32768 full scale), +-65535 between stages; knobs
  * 0-127, smoothed in 8.8 (sk, ss). */
 
 static void fx_reset(void);

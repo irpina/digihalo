@@ -1,37 +1,37 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* DigiSky's UI, on the pedal shell (pedal_ui.inc: the pages, SETUP, presets, TAP, BYPASS, the owner):
+/* DigiHalo's UI, on the pedal shell (pedal_ui.inc: the pages, SETUP, presets, TAP, BYPASS, the owner):
  *
  *   1 (the machine's name)  DECAY PRE-DELAY MIX TONE / PARAM 1 PARAM 2 MOD LOW END
- *                           (MAGNETO and NONLINEAR: TIME and FEEDBACK for DECAY and PRE-DELAY, as the BigSky's)
+ *                           (TAPE and NONLINEAR: TIME and FEEDBACK for DECAY and PRE-DELAY)
  *   2 PARAMS                the machine's other parameters (up to three) BOOST / DIFFUSION MOD RATE WIDTH DRY
  *   3 SETUP                 TYPE HOLD (FREEZE, INFINITE) PERSIST SYNC / CAB SPILLOVER
- *   PARAM 1, PARAM 2 and the extras are the machine's own (its menu's on the BigSky): their labels follow TYPE,
+ *   PARAM 1, PARAM 2 and the extras are the machine's own: their labels follow TYPE,
  *   and choosing a machine puts them at that machine's starting values (recalling a preset keeps its own).
  *   T1 the footswitch's hold: held, HOLD while held; tapped, HOLD latched on or off (FREEZE or INFINITE)
- *   T2 tapped: the next saved preset (as the BigSky's A, B, C); held: the wet out, swelling back on release
+ *   T2 tapped: the next saved preset; held: the wet out, swelling back on release
  *   T3, T4 the machine down, up
  *   trig 1-12 the machines;  trig 13 HOLD latched on or off;  trig 14 HOLD's mode
- *   MIDI: the BigSky's chart (midi.guide's): TYPE 19, DECAY 17, PRE-DELAY 18, MIX 15, TONE 3, MOD 14, PARAM 1 9,
+ *   MIDI (the chart in README.md): TYPE 19, DECAY 17, PRE-DELAY 18, MIX 15, TONE 3, MOD 14, PARAM 1 9,
  *   PARAM 2 16, BOOST 23, PERSIST 22, HOLD MODE 70, MIDI CLOCK (SYNC) 71, HOLD 97, TAP 93, BYPASS 102,
  *   footswitches A, B, C 80, 82, 81 (down: presets 1-3), and each machine's parameters (24-69) */
 #pragma GCC optimize ("no-tree-loop-distribute-patterns")
-#include "dsky.h"
+#include "dhalo.h"
 #include "tables.h"
 
 #define PD_TAG      0x44534B59u             /* "DSKY" */
-#define PD_NAME     "DIGISKY"
+#define PD_NAME     "DIGIHALO"
 #define PD_SAVE_VER 1
 #define PD_KBIP     0
 #define PD_SBIP     (1 << S_BOOST)
 #define PD_NCFG     0
 
-/* The Mod Menu's DIGISKY: a cloud over falling sparks */
+/* The Mod Menu's DIGIHALO: a cloud over falling sparks */
 static const u16 pd_icon[16] = {
     0x0000, 0x0380, 0x0C60, 0x1010, 0x7008, 0x8004, 0x8004, 0x8004,
     0x7FF8, 0x0000, 0x2492, 0x0000, 0x4924, 0x0000, 0x2492, 0x0000
 };
-static const char *const mc_name[MC_N] = { "Room", "Hall", "Plate", "Spring", "Swell", "Bloom", "Cloud", "Chorale",
-                                           "Shimmer", "Magneto", "Nonlinear", "Reflections" };
+static const char *const mc_name[MC_N] = { "Room", "Hall", "Plate", "Spring", "Swell", "Swirl", "Nebula", "Vowel",
+                                           "Shimmer", "Tape", "Nonlinear", "Reflections" };
 static const char *const mc_abbr[MC_N] = { "RM", "HL", "PL", "SP", "SW", "BL", "CL", "CH", "SH", "MG", "NL", "RF" };
 static const char *pd_title[3] = { "Hall", "Params", "Setup" };
 static const char *pd_klbl[8] = { "DECY", "PRE", "MIX", "TONE", "SIZE", "MID", "MOD", "LOW" };
@@ -41,8 +41,8 @@ static const u8 pd_sdef[8] = PD_SDEF;
 static const char *const pd_olbl[8] = { "TYPE", "HOLD", "PRST", "SYNC", "CAB", "SPIL", "", "" };
 static const u8 pd_onum[8] = { MC_N, 2, 2, 2, 2, 2, 0, 0 };
 static const u8 pd_odef[8] = PD_ODEF;
-static const char *const o_type[MC_N] = { "ROOM", "HALL", "PLAT", "SPRG", "SWEL", "BLOM", "CLOD", "CHOR", "SHIM",
-                                          "MAGN", "NLIN", "REFL" };
+static const char *const o_type[MC_N] = { "ROOM", "HALL", "PLAT", "SPRG", "SWEL", "SWRL", "NEBU", "VOWL", "SHIM",
+                                          "TAPE", "NLIN", "REFL" };
 static const char *const o_hold[2] = { "FRZ", "INF" };
 static const char *const o_onoff[2] = { "OFF", "ON" };
 static const char *const *const pd_oval[8] = { o_type, o_hold, o_onoff, o_onoff, o_onoff, o_onoff, 0, 0 };
@@ -75,19 +75,19 @@ static const char *const v_spacing[2] = { "EVEN", "UNEVEN" };
 static const char *const v_shape[6] = { "SWOOSH", "REVERSE", "RAMP", "GATE", "GAUSS", "BOUNCE" };
 static const char *const v_room[3] = { "SQUARE", "RECT", "OBLONG" };
 static const char *const pre_names[9] = { "1/32", "1/16T", "1/16", "1/8T", "1/8", "1/8D", "1/4", "1/4D", "1/2" };
-/* each machine's own CCs (midi.guide's BigSky chart): the CC, the machine, the slot (5: LOW END) */
+/* each machine's own CCs (the chart in README.md): the CC, the machine, the slot (5: LOW END) */
 static const u8 p_cc[][3] = {
     { 61, MC_ROOM, 5 }, { 59, MC_ROOM, P_P1 }, { 58, MC_ROOM, P_P2 },
     { 39, MC_HALL, 5 }, { 40, MC_HALL, P_P1 }, { 42, MC_HALL, P_P2 },
     { 69, MC_PLATE, 5 }, { 68, MC_PLATE, P_P1 },
     { 64, MC_SPRING, 5 }, { 63, MC_SPRING, P_P1 }, { 62, MC_SPRING, P_P2 },
     { 65, MC_SWELL, 5 }, { 66, MC_SWELL, P_P1 }, { 67, MC_SWELL, P_P2 },
-    { 31, MC_BLOOM, 5 }, { 32, MC_BLOOM, P_P1 }, { 30, MC_BLOOM, P_P2 },
-    { 38, MC_CLOUD, 5 }, { 37, MC_CLOUD, P_P1 },
-    { 33, MC_CHORALE, P_P1 }, { 34, MC_CHORALE, P_P2 },
+    { 31, MC_SWIRL, 5 }, { 32, MC_SWIRL, P_P1 }, { 30, MC_SWIRL, P_P2 },
+    { 38, MC_NEBULA, 5 }, { 37, MC_NEBULA, P_P1 },
+    { 33, MC_VOWEL, P_P1 }, { 34, MC_VOWEL, P_P2 },
     { 25, MC_SHIMMER, P_P1 }, { 26, MC_SHIMMER, P_P2 }, { 27, MC_SHIMMER, P_X1 }, { 28, MC_SHIMMER, P_X2 },
     { 24, MC_SHIMMER, 5 },
-    { 55, MC_MAGNETO, 5 }, { 57, MC_MAGNETO, P_P1 }, { 54, MC_MAGNETO, P_P2 }, { 56, MC_MAGNETO, P_X1 },
+    { 55, MC_TAPE, 5 }, { 57, MC_TAPE, P_P1 }, { 54, MC_TAPE, P_P2 }, { 56, MC_TAPE, P_X1 },
     { 44, MC_NONLIN, 5 }, { 46, MC_NONLIN, P_P1 }, { 45, MC_NONLIN, P_P2 }, { 47, MC_NONLIN, P_X1 },
     { 48, MC_NONLIN, P_X2 }, { 43, MC_NONLIN, P_X3 },
     { 52, MC_REFL, 5 }, { 49, MC_REFL, P_P1 }, { 50, MC_REFL, P_P2 }, { 51, MC_REFL, P_X1 } };
@@ -107,8 +107,8 @@ static void labels(int mc)
 {
     int k;
     pd_title[0] = mc_name[mc];
-    pd_klbl[K_DECAY] = mc == MC_MAGNETO || mc == MC_NONLIN ? "TIME" : "DECY";
-    pd_klbl[K_PRE] = mc == MC_MAGNETO || mc == MC_NONLIN ? "FDBK" : "PRE";
+    pd_klbl[K_DECAY] = mc == MC_TAPE || mc == MC_NONLIN ? "TIME" : "DECY";
+    pd_klbl[K_PRE] = mc == MC_TAPE || mc == MC_NONLIN ? "FDBK" : "PRE";
     pd_klbl[K_P1] = p_lbl[mc][P_P1] ? p_lbl[mc][P_P1] : "";
     pd_klbl[K_P2] = p_lbl[mc][P_P2] ? p_lbl[mc][P_P2] : "";
     for (k = 0; k < 3; k++)
@@ -254,7 +254,7 @@ static int fx_cc(int cc, int v)
                 int mc = p_cc[k][1], s = p_cc[k][2], n = s == 5 ? 21 : sky_pn[mc][s];
                 if (mc == mc_now() && n)
                     *slot_ctl(s) = (u8)sky_knob(v >= n ? n - 1 : v, n);
-                return 1;                       /* another machine's: taken, as the BigSky would */
+                return 1;                       /* another machine's: taken, and ignored */
             }
         return 0;
     }
@@ -271,9 +271,9 @@ static int slot_text(void *bmp, const void *font, int x, int y, int mc, int s, i
     if (s == P_P1) {
         if (mc <= MC_PLATE) t = v_size[mc][v];
         else if (mc == MC_SPRING) t = v_dwell[v];
-        else if (mc == MC_CHORALE) t = v_vowel[v];
+        else if (mc == MC_VOWEL) t = v_vowel[v];
         else if (mc == MC_SHIMMER) t = v_shift[v];
-        else if (mc == MC_MAGNETO) t = v_heads[v];
+        else if (mc == MC_TAPE) t = v_heads[v];
         else if (mc == MC_NONLIN) t = v_shape[v];
         else if (mc == MC_SWELL) {
             u32 ms = (u32)sky_rise[v] / 48;
@@ -286,9 +286,9 @@ static int slot_text(void *bmp, const void *font, int x, int y, int mc, int s, i
             return 1;
         }
         if (mc == MC_SWELL) t = v_swmode[v];
-        else if (mc == MC_CHORALE) t = v_reso[v];
+        else if (mc == MC_VOWEL) t = v_reso[v];
         else if (mc == MC_SHIMMER) t = v ? v_shift[v - 1] : "OFF";
-        else if (mc == MC_MAGNETO) t = v_spacing[v];
+        else if (mc == MC_TAPE) t = v_spacing[v];
     } else if (s == P_X2 && mc == MC_SHIMMER) {
         t = v_shmode[v];
     } else if (s == P_X1 && mc == MC_REFL) {
@@ -321,9 +321,9 @@ static int fx_value(void *bmp, const void *font, int x, int y, int pg, int i)
             else
                 TEXTF(bmp, font, x, y, -1, "%d.%02dS", (int)(ms / 1000), (int)(ms / 10 % 100));
         } else if (i == K_PRE) {
-            if (mc == MC_MAGNETO || mc == MC_NONLIN)
+            if (mc == MC_TAPE || mc == MC_NONLIN)
                 TEXTF(bmp, font, x, y, -1, "%d%%", v * 100 / 127);
-            else if (ST.opt[O_SYNC] && dsky_tempo())
+            else if (ST.opt[O_SYNC] && dhalo_tempo())
                 TEXTF(bmp, font, x, y, -1, "%s", pre_names[v * 9 / 128]);
             else
                 TEXTF(bmp, font, x, y, -1, "%dmS", (int)(ST.val[V_PRE] / 48));
@@ -378,6 +378,6 @@ static int fx_off(int pg, int i)
     if (pg == 1 && i <= S_X3)
         return !sky_pn[mc][P_X1 + i];
     if (pg == 2 && i == O_SYNC)
-        return !dsky_tempo();
+        return !dhalo_tempo();
     return 0;
 }

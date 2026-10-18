@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* The pedal shell: what the GAS-killer pedals for the Digitone mk1 share (DigiMood, DigiHedra, DigiTensor,
- * DigiHabit, DigiSky), as DigiCosm and DigiChroma do it. A pedal is a whole mod on core-dn1 3.2's core_audio:
+/* The pedal shell: what the GAS-killer pedals for the Digitone mk1 share (DigiTide, DigiTriad, DigiReel,
+ * DigiHoard, DigiHalo), as DigiSwarm and DigiPrism do it. A pedal is a whole mod on core-dn1 3.2's core_audio:
  * its Mod Menu entry opens its page, and while the page is open it owns the audio (the synths are muted) and
  * processes the Digitone's inputs; NO gives both back. Each mod carries an identical copy of pedal.h,
  * pedal_dsp.inc, pedal_ui.inc and pedal_tables.py; its own header defines PD() (its symbols' prefix) and its
